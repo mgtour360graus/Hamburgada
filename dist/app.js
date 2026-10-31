@@ -17,9 +17,17 @@
     return clean;
   }
   try { status=validateState(JSON.parse(localStorage.getItem(KEY)||'{}')); } catch { status={}; }
-  async function copy(text) {
-    try { await navigator.clipboard.writeText(text); toast('Copiado! Agora cole no aplicativo do banco.'); }
-    catch { const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();let ok=false;try{ok=document.execCommand('copy');}catch{}area.remove();if(ok)toast('Copiado!');else window.prompt('Copie este código:',text); }
+  function familyUrl(id) {
+    const url = new URL('./', location.href);
+    url.searchParams.set('familia', id);
+    url.searchParams.set('v', 'links-2');
+    url.hash = 'familia-' + id;
+    return url.toString();
+  }
+  async function copy(text, kind = 'pix') {
+    const message = kind === 'link' ? 'Link da família copiado! Envie pelo WhatsApp ou abra no navegador.' : 'Pix copiado! Cole no aplicativo do banco.';
+    try { await navigator.clipboard.writeText(text); toast(message); }
+    catch { const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();let ok=false;try{ok=document.execCommand('copy');}catch{}area.remove();if(ok)toast(message);else window.prompt(kind === 'link' ? 'Copie o link para compartilhar:' : 'Copie o código Pix:',text); }
   }
   function filter(id) {
     const family = data.families.find(f=>f.id===id);
@@ -28,12 +36,12 @@
     $('#show-all').hidden=!family;
   }
   $('#family-filters').innerHTML='<button data-family="all" aria-pressed="true">Todas</button>'+data.families.map(f=>`<button data-family="${f.id}" aria-pressed="false">${f.name}</button>`).join('');
-  $('#family-cards').innerHTML=data.families.map(f=>`<article class="card" id="familia-${f.id}" aria-labelledby="title-${f.id}"><div class="card-head"><div><h3 id="title-${f.id}">Família ${f.name}</h3><span>${f.people} pessoas no rateio</span></div><div class="family-initial" aria-hidden="true">${f.name[0]}</div></div><div class="card-body"><div class="card-total"><div><small>${f.id==='gutiara'?'Participação da família':'Valor a pagar pela família'}</small><strong>${brl(f.due)}</strong></div><span class="badge">${f.credit?'Salão abatido':'Cota da família'}</span></div>${f.credit?`<p class="credit">Cota de ${brl(f.gross)} − ${brl(f.credit)} já pagos pelo salão = <b>${brl(f.due)}</b>.</p>`:''}<div class="card-actions"><button class="button dark" data-pix="${f.id}" aria-label="Copiar Pix de ${brl(f.due)} da família ${f.name}">Pix Copia e Cola</button><button class="button outline" data-link="${f.id}">Link da família</button></div><details><summary>Ver código Pix Copia e Cola</summary><textarea class="payload" readonly aria-label="Pix Copia e Cola da família ${f.name}">${f.pix}</textarea></details>${f.id==='gutiara'?'<p class="own-note">Esta é a cota da própria recebedora. Não é necessário transferir para si.</p>':''}</div></article>`).join('');
+  $('#family-cards').innerHTML=data.families.map(f=>`<article class="card" id="familia-${f.id}" aria-labelledby="title-${f.id}"><div class="card-head"><div><h3 id="title-${f.id}">Família ${f.name}</h3><span>${f.people} pessoas no rateio</span></div><div class="family-initial" aria-hidden="true">${f.name[0]}</div></div><div class="card-body"><div class="card-total"><div><small>${f.id==='gutiara'?'Participação da família':'Valor a pagar pela família'}</small><strong>${brl(f.due)}</strong></div><span class="badge">${f.credit?'Salão abatido':'Cota da família'}</span></div>${f.credit?`<p class="credit">Cota de ${brl(f.gross)} − ${brl(f.credit)} já pagos pelo salão = <b>${brl(f.due)}</b>.</p>`:''}<div class="card-actions"><button class="button dark" data-pix="${f.id}" aria-label="Copiar Pix de ${brl(f.due)} da família ${f.name}">Pix Copia e Cola</button><a class="button outline" href="${familyUrl(f.id)}" aria-label="Abrir cartão da família ${f.name}">Abrir cartão</a><button class="button outline" data-link="${f.id}" aria-label="Copiar link da família ${f.name} para compartilhar">Copiar link para compartilhar</button></div><details><summary>Ver código Pix Copia e Cola</summary><textarea class="payload" readonly aria-label="Pix Copia e Cola da família ${f.name}">${f.pix}</textarea></details>${f.id==='gutiara'?'<p class="own-note">Esta é a cota da própria recebedora. Não é necessário transferir para si.</p>':''}</div></article>`).join('');
   document.addEventListener('click',event=>{
     const button=event.target.closest('button');if(!button)return;
     if(button.hasAttribute('data-copy-key'))copy(data.key);
     if(button.dataset.pix){const f=data.families.find(f=>f.id===button.dataset.pix);copy(f.pix);}
-    if(button.dataset.link){const u=new URL(location.href);u.search='';u.searchParams.set('familia',button.dataset.link);u.hash='familias';copy(u.toString());}
+    if(button.dataset.link)copy(familyUrl(button.dataset.link), 'link');
     if(button.dataset.family){filter(button.dataset.family);const u=new URL(location.href);if(button.dataset.family==='all')u.searchParams.delete('familia');else u.searchParams.set('familia',button.dataset.family);history.replaceState(null,'',u);}
     if(button.dataset.toggle)toggle(button.dataset.toggle);
   });
@@ -56,5 +64,13 @@
   });
   $('#csv').addEventListener('click',()=>{const rows=[['Família','Pessoas','Cota (R$)','Salão já pago (R$)','Saldo (R$)','Controle','Data'],...data.families.map(f=>[f.name,f.people,(f.gross/100).toFixed(2).replace('.',','),(f.credit/100).toFixed(2).replace('.',','),(f.due/100).toFixed(2).replace('.',','),status[f.id]?.paid?'Pago / registrado':f.id==='gutiara'?'Cota própria':'Pendente',status[f.id]?.date||''])];download('Hamburgada-rateio.csv','\uFEFF'+rows.map(row=>row.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(';')).join('\r\n'),'text/csv;charset=utf-8');});
   $('#print').addEventListener('click',()=>window.print());
-  renderControl();filter(new URLSearchParams(location.search).get('familia'));
+  function applyLocation() {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get('familia') || location.hash.replace(/^#familia-/, '');
+    const id = String(raw || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    filter(id);
+    if (data.families.some(f => f.id === id)) requestAnimationFrame(() => document.getElementById('familia-' + id).scrollIntoView({block:'start'}));
+  }
+  window.addEventListener('popstate', applyLocation);
+  renderControl();applyLocation();
 })();
